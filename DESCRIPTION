@@ -1,0 +1,14 @@
+Package: ProteomicsNavigator
+Type: Package
+Title: Proteomics Navigator
+Version: 1.0.1
+Date: 2020-08-06
+Author: Paul Shannon
+Maintainer: Paul Shannon<pshannon@systemsbiology.org>
+Imports:
+   org.Hs.eg.db
+Description: a shiny app for exploring Jeff Whiteacre's proteomics data
+Depends: R (>= 3.5.0)
+License: Artistic-2.0
+Encoding: UTF-8
+RoxygenNote: 7.1.1
