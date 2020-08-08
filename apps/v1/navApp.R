@@ -11,6 +11,10 @@ library(shinyModules)
 #------------------------------------------------------------------------------------------------------------------------
 printf <- function(...) print(noquote(sprintf(...)))
 #------------------------------------------------------------------------------------------------------------------------
+tbl <- get(load("tbl.39analytes.1157x6.RData"))
+analytes <- sort(unique(tbl$analyte))
+
+
 data.dir <- "~/github/ProteomicsNavigator/utils/prep"
 datasets <- file.path(data.dir, list.files(data.dir, pattern=".RData"))
 nav <- ProteomicsNavigator(datasets)
@@ -23,12 +27,15 @@ ui.dashboard <- dashboardPage(
 
   dashboardHeader(title = "Proteomic Assays"),
   dashboardSidebar(
-      div(
-          selectInput("selectExperiment",
+      div(messageBoxUI(id="plotCountBox", title=NULL, boxWidth=50, boxHeight=30,
+                   fontSize=18, backgroundColor="beige"), style="margin-left: 25px;"),
+      actionButton("displayPlotsButton", label="Plot"),
+      div(selectInput("selectExperiment",
                   label="Choose Experiments",
                   c("All", datasetNames),
                   selectize=TRUE,
-                  multiple=TRUE
+                  multiple=TRUE,
+                  selected="All"
                   ),
           style="margin-bottom: 150px"),
 
@@ -48,6 +55,19 @@ ui.dashboard <- dashboardPage(
 #----------------------------------------------------------------------------------------------------
 server <- function(input, output, session)
 {
+    plotCount <- reactiveVal(0)
+    plotCountBox.contents <- callModule(messageBoxServer, "plotCountBox", newContent=plotCount)
+
+    updatePlotCountDisplay <- function(){
+       experiments <- isolate(input$selectExperiment)
+       analytes <- isolate(input$selectAnalyte)
+       plotCount(as.integer(runif(1) * 100))
+       }
+
+    observeEvent(input$displayPlotsButton, {
+        printf("--- display plots")
+        })
+
     observeEvent(input$selectExperiment, ignoreInit=TRUE,{
         experiments <- input$selectExperiment
         print(experiments)
@@ -58,15 +78,17 @@ server <- function(input, output, session)
         })
 
     observeEvent(input$selectAnalyte, ignoreInit=TRUE,{
+       printf("selectAnalyte")
        analytes <- input$selectAnalyte;
        if(" - " %in% analytes){
           deleter <- grep(" - ", analytes)
           analytes <- analytes[-deleter]
-          updateSelectInput(session, "selectAnalytes", selected=analytes)
-          print(analytes)
+          }
+       updateSelectInput(session, "selectAnalytes", selected=analytes)
+       updatePlotCountDisplay()
+       print(analytes)
           #printf("analytes: %s", analyte)
           #displayAnalyteDataByExperiment(analytes)
-          }
        })
 
 } # server
