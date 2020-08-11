@@ -1,6 +1,8 @@
 library(ProteomicsNavigator)
 library(shinydashboard)
 library(shinyModules)
+library(shinyWidgets)
+library(shinyjs)
 #------------------------------------------------------------------------------------------------------------------------
 data.dir <- "~/github/ProteomicsNavigator/utils/prep"
 datasets <- file.path(data.dir, list.files(data.dir, pattern=".RData"))
@@ -25,25 +27,23 @@ ui.dashboard <- dashboardPage(
 
   dashboardHeader(title = "Proteomic Assays"),
   dashboardSidebar(
-      div(messageBoxUI(id="plotCountBox", title=NULL, boxWidth=50, boxHeight=30,
-                   fontSize=18, backgroundColor="beige"), style="margin-left: 25px;"),
-      actionButton("displayPlotsButton", label="Plot"),
-      div(selectInput("selectExperiment",
-                  label="Choose Experiments",
-                  c("None", "All", datasetNames),
-                  selectize=TRUE,
-                  multiple=TRUE,
-                  selected="None"
-                  ),
-          style="margin-bottom: 150px"),
-
-      selectInput("selectAnalyte",
-                  label="Choose Analytes",
-                  c("None", "All", analytes),
-                  selectize=TRUE,
-                  multiple=TRUE,
-                  selected="None"
-                  ),
+      useShinyjs(),
+      wellPanel(actionButton("displayPlotsButton", label="Plot"),
+                style="background-color: lightgray; margin: 20px;"),
+      pickerInput(
+          inputId = "experimentPicker",
+          label = "Select Experiments",
+          choices = datasetNames,
+          options = list(`actions-box`=TRUE, size=5,`selected-text-format`="count > 3"),
+          multiple = TRUE
+          ),
+      pickerInput(
+          inputId = "analytePicker",
+          label = "Select Analytes",
+          choices = analytes,
+          options = list(`actions-box` = TRUE, size = 5,`selected-text-format` = "count > 2"),
+          multiple = TRUE
+          ),
     sidebarMenuOutput("menu")
     ),
   dashboardBody(
@@ -54,30 +54,101 @@ ui.dashboard <- dashboardPage(
 #----------------------------------------------------------------------------------------------------
 server <- function(input, output, session)
 {
+    shinyjs::disable("displayPlotsButton")
     plotCount <- reactiveVal(0)
     plotCountBox.contents <- callModule(messageBoxServer, "plotCountBox", newContent=plotCount)
 
-    updatePlotCountDisplay <- function(){
-       experiments <- input$selectExperiment
-       analytes <- input$selectAnalyte
-       if(!(experiments == "None" || analytes == "None")){
-          tbls <- getPlotFriendlyDataFrames(nav, analytes, experiments)
-          plotCount(length(tbls))
-          }
+    observeEvent(input$experimentPicker, ignoreNULL=FALSE, {
+        printf("--- experimentPicker")
+        conditionallyEnablePlotButton()
+        picked <- input$experimentPicker
+        print(picked)
+        })
+
+    conditionallyEnablePlotButton <- function(){
+       printf("--- calculating state of plot button")
+       shinyjs::disable("displayPlotsButton")
+       analytesPicked <- !is.null(input$analytePicker)
+       experimentsPicked <- !is.null(input$experimentPicker)
+       if(analytesPicked && experimentsPicked)
+           shinyjs::enable("displayPlotsButton")
        }
 
-    observeEvent(input$displayPlotsButton, {
-        printf("--- display plots")
+    observeEvent(input$analytePicker, ignoreNULL=FALSE, {
+        printf("--- analytePicker")
+        analytesPicked <- input$analytePicker
+        conditionallyEnablePlotButton()
+        print(analytesPicked)
         })
+
+    updatePlotCountDisplay <- function(){
+       printf("--- entering updatePlotCountDisplay")
+       experiments <- input$selectExperiment
+       printf("experiements: %d", length(experiments))
+       print(experiments)
+       plotCount(0)
+       if(all(experiments == "")){
+           plotCount(0)
+           return()
+           }
+       analytes <- input$selectAnalyte
+       printf("analytes: %d", length(analytes))
+       print(analytes)
+       if(all(analytes == "")){
+           plotCount(0)
+           return()
+           }
+       tbls <- getPlotFriendlyDataFrames(nav, analytes, experiments)
+       plotCount(length(tbls))
+       }
+
+    plotAnalytes <- function(tbls){
+        printf("plotting %d analytes", length(tbls))
+        }
+
+    observeEvent(input$displayPlotsButton, {
+       experiments <- isolate(input$experimentPicker)
+       analytes <- isolate(input$analytePicker)
+       print(experiments)
+       print(analytes)
+       legit.experiments <- !all(is.null(experiments))
+       legit.analytes    <- !all(is.null(analytes))
+       if(legit.experiments && legit.analytes){
+          tbls <- getPlotFriendlyDataFrames(nav, analytes, experiments)
+          if(length(tbls) < 12)
+              plotAnalytes(tbls)
+          else{
+              plottingQuestion <- sprintf("Render %d plots?", length(tbls))
+              confirmSweetAlert(session,
+                                inputId="confirmPlotAlert",
+                                title = "Plot?",
+                                text = plottingQuestion,
+                                type = "question",
+                                btn_labels = c("Cancel", "Confirm"),
+                                btn_colors = NULL,
+                                closeOnClickOutside = FALSE,
+                                showCloseButton = FALSE,
+                                html = FALSE
+                                )
+              }
+          } # if legits
+        })
+
+
+    observeEvent(input$confirmPlotAlert, {
+       proceed <- input$confirmPlotAlert
+       printf("proceed to plot: %s", proceed)
+       experiments <- isolate(input$experimentPicker)
+       analytes <- isolate(input$analytePicker)
+       tbls <- getPlotFriendlyDataFrames(nav, analytes, experiments)
+       plotAnalytes(tbls)
+       })
+
 
     observeEvent(input$selectExperiment, ignoreInit=TRUE,{
        experiments <- input$selectExperiment
        print(experiments)
-       if(length(experiments) > 1 && "None" %in% experiments){
-          deleter <- grep("None", experiments)
-          experiments <- experiments[-deleter]
-          updateSelectInput(session, "selectExperiment", selected=experiments)
-          }
+       # if(length(experiments) > 1 && " - " %in% experiments){
 
        if("All" %in% experiments){
            updateSelectInput(session, "selectExperiment", selected="All")
@@ -89,11 +160,6 @@ server <- function(input, output, session)
     observeEvent(input$selectAnalyte, ignoreInit=TRUE,{
        printf("selectAnalyte")
        analytes <- input$selectAnalyte;
-       if(length(analytes) > 1 && "None" %in% analytes){
-          printf("found 'None' in selected analytes")
-          deleter <- grep("None", analytes)
-          analytes <- analytes[-deleter]
-          }
        printf("analytes about to update: %s", paste(analytes, sep=","))
        updateSelectInput(session, "selectAnalyte", selected=analytes)
        updatePlotCountDisplay()
