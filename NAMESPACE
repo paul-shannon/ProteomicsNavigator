@@ -2,10 +2,12 @@
 
 export(ProteomicsNavigator)
 exportMethods(getAnalytes)
-exportMethods(getData)
+exportMethods(getDataSet)
 exportMethods(getDataSetNames)
 exportMethods(getExperimentMetadata)
+exportMethods(getPlotFriendlyDataFrames)
 exportMethods(loadDataSets)
+import(RColorBrewer)
 import(methods)
 import(org.Hs.eg.db)
 import(yaml)

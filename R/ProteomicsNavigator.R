@@ -1,6 +1,7 @@
 #' @import org.Hs.eg.db
 #' @import yaml
 #' @importFrom methods new
+#' @import RColorBrewer
 #'
 #' @title ProteomicsNavigator
 #------------------------------------------------------------------------------------------------------------------------
@@ -19,9 +20,13 @@
 #------------------------------------------------------------------------------------------------------------------------
 setGeneric('loadDataSets', signature='obj', function(obj) standardGeneric ('loadDataSets'))
 setGeneric('getDataSetNames', signature='obj', function(obj) standardGeneric ('getDataSetNames'))
+setGeneric('getDataSet', signature='obj', function(obj, dataSetName) standardGeneric ('getDataSet'))
 setGeneric('getAnalytes', signature='obj', function(obj) standardGeneric ('getAnalytes'))
-setGeneric('getExperimentMetadata', signature='obj', function(obj, dataSetName) standardGeneric('getExperimentMetadata'))
-setGeneric('getData', signature='obj', function(obj, analytes, experiments) standardGeneric ('getData'))
+setGeneric('getExperimentMetadata', signature='obj', function(obj, dataSetName)
+    standardGeneric('getExperimentMetadata'))
+setGeneric('getPlotFriendlyDataFrames', signature='obj', function(obj, analytes, experiments)
+    standardGeneric('getPlotFriendlyDataFrames'))
+
 #------------------------------------------------------------------------------------------------------------------------
 #' Create a ProteomicsNavigator connection
 #'
@@ -75,6 +80,24 @@ setMethod('getDataSetNames', 'ProteomicsNavigator',
         })
 
 #------------------------------------------------------------------------------------------------------------------------
+#' return 2 matrices: avg & sd
+#'
+#' @rdname getDataSet
+#' @aliases getDataSet
+#'
+#' @param obj a ProteomicsNavigator instance
+#' @param dataSetName a character string
+#'
+#' @export
+#'
+setMethod('getDataSet', 'ProteomicsNavigator',
+
+     function(obj, dataSetName){
+        stopifnot(dataSetName %in% names(obj@state$datasets))
+        obj@state$datasets[[dataSetName]]
+        })
+
+#------------------------------------------------------------------------------------------------------------------------
 #' the sorted, combined, unique list of analytes, rownames of the 'avg' matrices
 #'
 #' @rdname getAnalytes
@@ -111,28 +134,68 @@ setMethod('getExperimentMetadata', 'ProteomicsNavigator',
         })
 
 #------------------------------------------------------------------------------------------------------------------------
-#' avg and sd data.frames for the specified analytes, in the specified experiments
+# #' avg and sd data.frames for the specified analytes, in the specified experiments
+# #'
+# #' @rdname getData
+# #' @aliases getData
+# #'
+# #' @export
+# #'
+# setMethod('getData', 'ProteomicsNavigator',
+#
+#      function(obj, analytes, experiments){
+#         browser();
+#         xyz <- 99
+#         datasets <- obj@state$datasets
+#         for(experiment in experiments){
+#            md <- datasets[[experiment]]$md
+#            for(analyte in analytes){
+#               tbl.data <- nav@state$datasets[[experiment]]$avg[analyte,,drop=FALSE]
+#               tbl.ae <- .extractAnalyteTable(experiment, analyte, tbl.data, md)
+#               } # for analyte
+#            } # for experiment
+#         })
+#
+#
+#------------------------------------------------------------------------------------------------------------------------
+#'  a list of dataframes, each ready for plotting
 #'
-#' @rdname getData
-#' @aliases getData
+#' @rdname getPlotFriendlyDataFrames
+#' @aliases getPlotFriendlyDataFrames
 #'
 #' @export
 #'
-setMethod('getData', 'ProteomicsNavigator',
+setMethod('getPlotFriendlyDataFrames', 'ProteomicsNavigator',
 
      function(obj, analytes, experiments){
-        browser();
-        xyz <- 99
-        datasets <- obj@state$datasets
-        for(experiment in experiments){
-           md <- datasets[[experiment]]$md
-           for(analyte in analytes){
-              tbl.data <- nav@state$datasets[[experiment]]$avg[analyte,,drop=FALSE]
-              tbl.ae <- .extractAnalyteTable(experiment, analyte, tbl.data, md)
-              } # for analyte
-           } # for experiment
-        })
 
+         result <- list()
+         if(all(tolower(experiments) == "all"))
+             experiments <- getDataSetNames(obj)
+
+         for(experimentName in experiments){
+             dataset <- getDataSet(obj, experimentName)
+             if(all(tolower(analytes) == "all"))
+                analytes.this.experiment <- getAnalytes(obj)
+             else
+                analytes.this.experiment <- analytes
+             analytes.this.experiment <- intersect(analytes.this.experiment, rownames(dataset$avg))
+             for(analyte in analytes.this.experiment){
+                 tblName <- sprintf("%s-%s", experimentName, analyte)
+                 mtx.avg <- dataset$avg
+                 mtx.sd  <- dataset$sd
+                 colors <- rep(brewer.pal(12, "Paired"), 100)[seq_len(ncol(mtx.avg))]
+                 x <- data.frame(variable=colnames(mtx.avg),
+                                 mean=as.numeric(mtx.avg[analyte,]),
+                                 sd=as.numeric(mtx.sd[analyte,]),
+                                 analyte=rep(analyte, ncol(mtx.avg)),
+                                 color=colors,
+                                 stringsAsFactors=FALSE)
+                 result[[tblName]] <- x
+                 } # for analyte
+              } # for experimentName
+          result
+     }) # getPlotFriendlyDataFrames
 
 #------------------------------------------------------------------------------------------------------------------------
 # create a table like this from tbl.data and md.  this can then
@@ -158,17 +221,17 @@ setMethod('getData', 'ProteomicsNavigator',
 #  TP53BP1_pS552_IDED     G7B        DMSO          0      1   x.xx  y.yy
 #  ...
 # which is almost ready to be plotted
-.extractAnalyteInExperimentTable <- function(experimentName, analyte, tbl.data, md)
-{
-   colnames <- colnames(tbl.data)
-
-   for(colname in colnames){ # find the corresponding metadata
-      index <- grep(colname, unlist(lapply(md$conditions, function(cond) cond$name)))
-      condition <- md$conditions[[index]]
-      tbl.md.condition <- do.call(rbind, lapply(condition$treatments, data.frame))
-      browser()
-      xyz <- 678
-      } # for colname
-
-} # .extractAnalyteInExperimentTable
+# .extractAnalyteInExperimentTable <- function(experimentName, analyte, tbl.data, md)
+# {
+#    colnames <- colnames(tbl.data)
+#
+#    for(colname in colnames){ # find the corresponding metadata
+#       index <- grep(colname, unlist(lapply(md$conditions, function(cond) cond$name)))
+#       condition <- md$conditions[[index]]
+#       tbl.md.condition <- do.call(rbind, lapply(condition$treatments, data.frame))
+#       browser()
+#       xyz <- 678
+#       } # for colname
+#
+# } # .extractAnalyteInExperimentTable
 #------------------------------------------------------------------------------------------------------------------------

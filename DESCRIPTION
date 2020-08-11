@@ -1,8 +1,8 @@
 Package: ProteomicsNavigator
 Type: Package
 Title: Proteomics Navigator
-Version: 1.0.2
-Date: 2020-08-07
+Version: 1.0.3
+Date: 2020-08-10
 Author: Paul Shannon
 Maintainer: Paul Shannon<pshannon@systemsbiology.org>
 Imports:
