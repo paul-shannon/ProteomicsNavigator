@@ -2,6 +2,9 @@ library(ProteomicsNavigator)
 library(shinydashboard)
 library(shinyModules)
 #------------------------------------------------------------------------------------------------------------------------
+data.dir <- "~/github/ProteomicsNavigator/utils/prep"
+datasets <- file.path(data.dir, list.files(data.dir, pattern=".RData"))
+#------------------------------------------------------------------------------------------------------------------------
 # inspired by, and code stealing from:
 #   https://roh.engineering/post/shiny-add-removing-modules-dynamically/   # linear models for mtcars mpg
 #   https://www.ardata.fr/en/post/2019/07/01/dynamic-module-call/
@@ -11,14 +14,9 @@ library(shinyModules)
 #------------------------------------------------------------------------------------------------------------------------
 printf <- function(...) print(noquote(sprintf(...)))
 #------------------------------------------------------------------------------------------------------------------------
-tbl <- get(load("tbl.39analytes.1157x6.RData"))
-analytes <- sort(unique(tbl$analyte))
-
-
-data.dir <- "~/github/ProteomicsNavigator/utils/prep"
-datasets <- file.path(data.dir, list.files(data.dir, pattern=".RData"))
 nav <- ProteomicsNavigator(datasets)
 loadDataSets(nav)
+
 datasetNames <- getDataSetNames(nav)
 print(datasetNames)
 analytes <- getAnalytes(nav)
@@ -32,18 +30,19 @@ ui.dashboard <- dashboardPage(
       actionButton("displayPlotsButton", label="Plot"),
       div(selectInput("selectExperiment",
                   label="Choose Experiments",
-                  c("All", datasetNames),
+                  c("None", "All", datasetNames),
                   selectize=TRUE,
                   multiple=TRUE,
-                  selected="All"
+                  selected="None"
                   ),
           style="margin-bottom: 150px"),
 
       selectInput("selectAnalyte",
                   label="Choose Analytes",
-                  analytes,
+                  c("None", "All", analytes),
                   selectize=TRUE,
-                  multiple=TRUE
+                  multiple=TRUE,
+                  selected="None"
                   ),
     sidebarMenuOutput("menu")
     ),
@@ -59,9 +58,12 @@ server <- function(input, output, session)
     plotCountBox.contents <- callModule(messageBoxServer, "plotCountBox", newContent=plotCount)
 
     updatePlotCountDisplay <- function(){
-       experiments <- isolate(input$selectExperiment)
-       analytes <- isolate(input$selectAnalyte)
-       plotCount(as.integer(runif(1) * 100))
+       experiments <- input$selectExperiment
+       analytes <- input$selectAnalyte
+       if(!(experiments == "None" || analytes == "None")){
+          tbls <- getPlotFriendlyDataFrames(nav, analytes, experiments)
+          plotCount(length(tbls))
+          }
        }
 
     observeEvent(input$displayPlotsButton, {
@@ -69,26 +71,34 @@ server <- function(input, output, session)
         })
 
     observeEvent(input$selectExperiment, ignoreInit=TRUE,{
-        experiments <- input$selectExperiment
-        print(experiments)
-        if("All" %in% experiments){
-            updateSelectInput(session, "selectExperiment", selected="All")
-            printf("all experiments requested")
-            }
+       experiments <- input$selectExperiment
+       print(experiments)
+       if(length(experiments) > 1 && "None" %in% experiments){
+          deleter <- grep("None", experiments)
+          experiments <- experiments[-deleter]
+          updateSelectInput(session, "selectExperiment", selected=experiments)
+          }
+
+       if("All" %in% experiments){
+           updateSelectInput(session, "selectExperiment", selected="All")
+           printf("all experiments requested")
+           }
+        updatePlotCountDisplay()
         })
 
     observeEvent(input$selectAnalyte, ignoreInit=TRUE,{
        printf("selectAnalyte")
        analytes <- input$selectAnalyte;
-       if(" - " %in% analytes){
-          deleter <- grep(" - ", analytes)
+       if(length(analytes) > 1 && "None" %in% analytes){
+          printf("found 'None' in selected analytes")
+          deleter <- grep("None", analytes)
           analytes <- analytes[-deleter]
           }
-       updateSelectInput(session, "selectAnalytes", selected=analytes)
+       printf("analytes about to update: %s", paste(analytes, sep=","))
+       updateSelectInput(session, "selectAnalyte", selected=analytes)
        updatePlotCountDisplay()
        print(analytes)
-          #printf("analytes: %s", analyte)
-          #displayAnalyteDataByExperiment(analytes)
+       #displayAnalyteDataByExperiment(analytes)
        })
 
 } # server
@@ -125,4 +135,4 @@ displayAnalyteDataByExperiment <- function(analyte.name)
 
 } # displayAnalyteDataByExperiment
 #----------------------------------------------------------------------------------------------------
-runApp(shinyApp(ui.dashboard, server), host="0.0.0.0", port=3838)
+runApp(shinyApp(ui.dashboard, server), host="0.0.0.0", port=3839)
