@@ -1,0 +1,8 @@
+FROM nav_app_12aug2020_base
+WORKDIR /home/shiny
+RUN mkdir data
+COPY navApp.R .
+COPY data/*.RData data/
+
+
+

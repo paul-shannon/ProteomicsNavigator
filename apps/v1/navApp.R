@@ -4,7 +4,7 @@ library(shinyModules)
 library(shinyWidgets)
 library(shinyjs)
 #------------------------------------------------------------------------------------------------------------------------
-data.dir <- "~/github/ProteomicsNavigator/utils/prep"
+data.dir <- "data"
 datasets <- file.path(data.dir, list.files(data.dir, pattern=".RData"))
 #------------------------------------------------------------------------------------------------------------------------
 # inspired by, and code stealing from:
@@ -28,8 +28,6 @@ ui.dashboard <- dashboardPage(
   dashboardHeader(title = "Proteomic Assays"),
   dashboardSidebar(
       useShinyjs(),
-      wellPanel(actionButton("displayPlotsButton", label="Plot"),
-                style="background-color: lightgray; margin: 20px;"),
       pickerInput(
           inputId = "experimentPicker",
           label = "Select Experiments",
@@ -43,7 +41,11 @@ ui.dashboard <- dashboardPage(
           choices = analytes,
           options = list(`actions-box` = TRUE, size = 5,`selected-text-format` = "count > 2"),
           multiple = TRUE
-          ),
+         ),
+      selectInput(inputId="plotsPerRowSelector", label="Plots per Row",
+                  choices=as.character(1:4), selected="3"),
+      wellPanel(actionButton("displayPlotsButton", label="Plot"),
+                style="background-color: lightgray; margin: 20px;"),
     sidebarMenuOutput("menu")
     ),
   dashboardBody(
@@ -103,8 +105,30 @@ server <- function(input, output, session)
        }
 
     plotAnalytes <- function(tbls){
-        printf("plotting %d analytes", length(tbls))
-        }
+       printf("plotting %d analytes", length(tbls))
+       removeUI("#temporaryDiv")
+       insertUI("#plotBoxDiv", "beforeEnd", div(id="temporaryDiv"))
+       tbl.names <- names(tbls)
+       for(i in seq_len(length(tbl.names))){
+          tbl.name <- tbl.names[i]
+          tbl <- tbls[[i]]
+          box.title <- tbl.name
+          box.id <- tbl.name #sprintf("%s-%s", analyte.name, experiment.group)
+          boxesPerRow <- as.integer(isolate(input$plotsPerRowSelector))
+          calculatedBoxWidth <- as.integer(1000/boxesPerRow)
+          bootstrapWidth <- as.integer(12/boxesPerRow)
+          #if(boxesPerRow == 1){
+          #    calculatedBoxWidth=800
+          #    bootstrapWidth=12
+          #    }
+          insertUI("#temporaryDiv", "beforeEnd",
+                   box(ExperimentalMeasuresUI(id=box.id, title=box.title, boxHeight=calculatedBoxWidth, boxWidth=calculatedBoxWidth),
+                       title=box.title,
+                       width=bootstrapWidth,
+                       solidHeader=TRUE))
+          ExperimentalMeasuresServer(id=box.id, tbl=tbl)
+          } # for i
+      } # plotAnalytes
 
     observeEvent(input$displayPlotsButton, {
        experiments <- isolate(input$experimentPicker)
@@ -115,6 +139,10 @@ server <- function(input, output, session)
        legit.analytes    <- !all(is.null(analytes))
        if(legit.experiments && legit.analytes){
           tbls <- getPlotFriendlyDataFrames(nav, analytes, experiments)
+          #if(length(tbls) == 1){
+          #    print(lapply(tbls[[1]], class))
+          #    print(tbls)
+          #    }
           if(length(tbls) < 12)
               plotAnalytes(tbls)
           else{
@@ -169,36 +197,4 @@ server <- function(input, output, session)
 
 } # server
 #----------------------------------------------------------------------------------------------------
-displayAnalyteDataByExperiment <- function(analyte.name)
-{
-   tbl.sub <- subset(tbl, analyte==analyte.name) # [, coi] #  & groupName==exoi.01)[, coi]
-   experiment.groups <- sort(unique(tbl.sub$group))
-   if(length(experiment.groups) == 0){
-       printf("no experiments for analyte '%s'", analyte.name)
-       return()
-       }
-   printf("--- experiment groups: %d", length(experiment.groups))
-   print(experiment.groups)
-
-   removeUI("#temporaryDiv")
-   insertUI("#plotBoxDiv", "beforeEnd", div(id="temporaryDiv"))
-
-   for(experiment.group in experiment.groups){
-     coi <- c("time", "experiment", "radiation", "area", "sd")
-     tbl.exp <- subset(tbl.sub, group==experiment.group)[, coi]
-     printf("--- displaying %s in %s, %d rows", analyte.name, experiment.group, nrow(tbl.exp))
-     if(nrow(tbl.exp) == 0) break;
-     box.title <- sprintf("%s: %s", analyte.name, experiment.group)
-     box.id <- sprintf("%s-%s", analyte.name, experiment.group)
-     printf("--- calling insertUI, for %s, %s", analyte.name, experiment.group)
-     insertUI("#temporaryDiv", "beforeEnd",
-              box(ExperimentalMeasuresUI(id=box.id, title=box.title, boxWidth=400),
-                  title=box.title,
-                  width=4,
-                  solidHeader=TRUE))
-     ExperimentalMeasuresServer(id=box.id, tbl=tbl.exp)
-     }
-
-} # displayAnalyteDataByExperiment
-#----------------------------------------------------------------------------------------------------
-runApp(shinyApp(ui.dashboard, server), host="0.0.0.0", port=3839)
+runApp(shinyApp(ui.dashboard, server), host="0.0.0.0", port=3838)
